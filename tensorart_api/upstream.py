@@ -143,9 +143,11 @@ class Upstream:
         return data
 
     async def _fetch(
-        self, source: Source, path: str, body: dict | None, query: dict | None, headers: dict | None = None
+        self, source: Source, path: str, body: dict | None, query: dict | None, headers: dict | None = None,
+        timeout: float | None = None,
     ) -> Any:
-        """One uncached signed call. `headers` are merged over the signed ones (used for account calls)."""
+        """One uncached signed call. `headers` are merged over the signed ones and `timeout` over the
+        client's (both used for account calls)."""
         url = source.api + path
         for attempt in range(3):
             try:
@@ -156,6 +158,7 @@ class Upstream:
                         params=query,
                         content=json.dumps(body) if body is not None else None,
                         headers={**self._headers(source, path, query), **(headers or {})},
+                        **({"timeout": timeout} if timeout else {}),
                     )
             except httpx.TransportError as e:
                 if attempt == 2:

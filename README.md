@@ -188,6 +188,25 @@ curl -X POST localhost:8000/v1/uploads \
 `cover_url` is required: the catalogue needs a showcase image and copies it. `type` is `lora`
 (also `locon`, `lycoris`, `dora`) or `checkpoint`; `base_model` uses the catalogue's own labels.
 
+## Your account: LoRA training
+
+With a session configured, the server can also train a LoRA from your own images on the
+site's online trainer and publish the epoch you choose as a private model.
+
+1. `POST /v1/trainings` `{"name": "Ink Wash", "kind": "style"}` (or `"character"`) creates a draft.
+2. `POST /v1/trainings/{id}/images` (multipart, repeatable `files`: jpg, png or webp, up to 20 MB) uploads and
+   auto-tags each image with the Danbooru-style `wd-v1-4-vit-tagger-v2`. Call it as many times as you like.
+3. `POST /v1/trainings/{id}/start` applies the preset for the kind and starts the run. Training spends the
+   site's credits; `credits` on the training shows the cost, and a shortfall answers 402.
+4. Poll `GET /v1/trainings/{id}`: `queued`, `training` (with `progress`), then `trained` once every saved
+   epoch has sample images. Sample links expire within the hour; re-read the training for fresh ones.
+5. `POST /v1/trainings/{id}/publish` `{"epoch": 6}` publishes that epoch privately; the training ends
+   `published` with the same `model_id` and `access_key` an upload gets.
+
+Presets: Illustrious v0.1 base (its LoRAs carry over to most Illustrious fine-tunes), rank 32, 10 epochs
+with one saved every 2, and repeats scaled so each epoch sees about 300 images. As a guide, 20 to 40
+varied images make a good character and 50 to 150 a good style.
+
 ## Configuration
 
 Copy `.env.example` to `.env` (git-ignored); the CLI and server read it from the working directory.
@@ -208,6 +227,9 @@ Real environment variables take precedence.
 | `ACCOUNT_SOURCE` | `tensorhub` | Which site the account calls go to |
 | `SESSION_RENEW_HOURS` | `24` | How often the session is renewed |
 | `UPLOAD_CONCURRENCY` / `UPLOAD_PART_CONCURRENCY` | `2` / `4` | Uploads at once / parts in flight per upload |
+| `TRAIN_SOURCE` | `tensorart` | Which site runs trainings (each site has its own credits) |
+| `TRAIN_UPLOAD_CONCURRENCY` | `4` | Training images uploaded at once |
+| `ACCOUNT_TIMEOUT` | `60` | Seconds per account call |
 
 ## How it works
 

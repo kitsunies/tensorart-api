@@ -131,3 +131,49 @@ class Upload(BaseModel):
 
 class UploadList(BaseModel):
     items: list[Upload]
+
+
+class TrainingRequest(BaseModel):
+    """Start a LoRA training: then add images, then start it."""
+
+    name: str = Field(min_length=1, max_length=120)
+    kind: Literal["style", "character"]
+    trigger_word: str | None = Field(None, max_length=60, description="Defaults to a slug of the name")
+    external_id: str | None = Field(None, max_length=200, description="Idempotency key: the same value returns the same training")
+
+
+class Epoch(BaseModel):
+    epoch: int
+    samples: list[str] = Field(description="Sample images; links expire within the hour, so re-read the training for fresh ones")
+
+
+class Published(BaseModel):
+    epoch: int
+    model_id: str
+    access_key: str | None = None
+    cover_url: str | None = None
+
+
+class Training(BaseModel):
+    id: str
+    external_id: str | None = None
+    name: str
+    kind: Literal["style", "character"]
+    trigger_word: str
+    state: Literal["draft", "queued", "training", "trained", "publishing", "published", "failed"]
+    images: int = 0
+    progress: float = 0.0
+    credits: float | None = Field(None, description="Credits charged for the run")
+    epochs: list[Epoch] = []
+    published: Published | None = None
+    error: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class TrainingList(BaseModel):
+    items: list[Training]
+
+
+class PublishRequest(BaseModel):
+    epoch: int = Field(ge=1)

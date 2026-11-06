@@ -21,6 +21,7 @@ from .upstream import SOURCES, Source, Upstream, UpstreamError
 
 log = logging.getLogger("tensorart_api.account")
 RENEW_SECONDS = float(os.environ.get("SESSION_RENEW_HOURS", 24)) * 3600
+ACCOUNT_TIMEOUT = float(os.environ.get("ACCOUNT_TIMEOUT", 60))
 
 
 def claims(token: str) -> dict:
@@ -67,11 +68,12 @@ class Account:
         c = claims(self.token)
         return {"user_id": str(c.get("userId", "")), "token_expires_at": iso(c.get("exp")), "renewed_at": iso(self.renewed_at)}
 
-    async def call(self, path: str, body: dict | None = None, query: dict | None = None) -> Any:
-        """Uncached signed call as the account's user."""
+    async def call(self, path: str, body: dict | None = None, query: dict | None = None, source: Source | None = None) -> Any:
+        """Uncached signed call as the account's user (on `source`, default ACCOUNT_SOURCE)."""
         headers = {"authorization": f"Bearer {self.token}", "x-device-id": str(claims(self.token).get("deviceId", ""))}
         try:
-            return await self.up._fetch(self.source, path, body, query, headers)
+            # Account calls do real work upstream (creating models, training) and may cross a lossy line.
+            return await self.up._fetch(source or self.source, path, body, query, headers, timeout=ACCOUNT_TIMEOUT)
         except UpstreamError as e:
             if "need login" in e.message.lower():
                 raise UpstreamError("the tensor.art session is no longer valid: set a fresh TENSORART_SESSION", 503) from e

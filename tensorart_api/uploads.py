@@ -213,37 +213,44 @@ class Uploads:
         urls_path.unlink(missing_ok=True)
 
     async def publish(self, job: dict) -> None:
-        req, a = job["request"], self.account
-        if not job.get("project_id"):
-            data = await a.call("/community-web/v1/project/create", {
-                "name": req["name"], "modality": "IMAGE", "type": TYPES[req["type"]], "tagNames": [],
-                "description": req.get("description") or "",
-                "flags": {"allowOnlineGenerate": True, "isProjectOriginal": False, "onlyAccessibleBySelf": True, "grantDownload": False},
-                "originalUrl": req.get("source_url") or "", "exclusiveChoice": "REPRINT",
-                "channelId": await a.channel_id(req.get("channel") or "anime")})
-            job["project_id"] = str(data["projectId"])
-            self.save(job)
-        if not job.get("model_id"):
-            f = job["file"]
-            data = await a.call("/community-web/v1/model/create", {
-                "projectId": job["project_id"], "name": req.get("version_name") or "v1", "baseModel": req["base_model"],
-                "trainedWords": req.get("trigger_words") or [], "description": req.get("description") or "",
-                "meta": {"hideChat": True}, "flags": {"freeDownload": False, "grantDownload": False, "freeRun": True, "grantRun": False},
-                "modelFiles": [{"name": req["file_name"], "floatingPoint": "FP16", "fileType": "SAFE_TENSOR", "modelSize": "FULL",
-                                "ossBucket": f["bucket"], "ossEndpoint": f["endpoint"], "ossPath": f["object_key"]}],
-                "imageIds": {"value": []}, "imageUrls": [req["cover_url"]], "coverShowcaseIds": {}, "subscribePlanId": "0"})
-            job["model_id"] = str(data["modelId"])
-            self.save(job)
-        deadline = time.time() + 3600
-        while True:
-            model = ((await a.call("/community-web/v1/model/detail", query={"modelId": job["model_id"]})) or {}).get("model") or {}
-            status = model.get("syncStatus")
-            if status == "FINISHED" and model.get("canRun"):
-                job["access_key"] = model.get("accessKey") or None
-                job["cover_url"] = next((c.get("url") for c in model.get("cover") or [] if c.get("url")), None)
-                return
-            if status and "FAIL" in status:
-                raise UpstreamError(f"the model failed to process upstream ({status})", 502)
-            if time.time() > deadline:
-                raise UpstreamError("the model did not become runnable within an hour", 504)
-            await asyncio.sleep(self.poll_seconds)
+        await publish(self.account, job, self.save, self.poll_seconds)
+
+
+async def publish(account: Account, job: dict, save, poll_seconds: float = 5.0, meta: dict | None = None) -> None:
+    """Private project + model version for `job["file"]`, then wait until it can run. Resumable:
+    project_id and model_id are saved as soon as they exist. Shared by uploads and trainings."""
+    req, a = job["request"], account
+    original = not req.get("source_url")  # a reprint needs its source link; your own trained work is original
+    if not job.get("project_id"):
+        data = await a.call("/community-web/v1/project/create", {
+            "name": req["name"], "modality": "IMAGE", "type": TYPES[req["type"]], "tagNames": [],
+            "description": req.get("description") or "",
+            "flags": {"allowOnlineGenerate": True, "isProjectOriginal": original, "onlyAccessibleBySelf": True, "grantDownload": False},
+            "originalUrl": req.get("source_url") or "", "exclusiveChoice": "ORIGINAL" if original else "REPRINT",
+            "channelId": await a.channel_id(req.get("channel") or "anime")})
+        job["project_id"] = str(data["projectId"])
+        save(job)
+    if not job.get("model_id"):
+        f = job["file"]
+        data = await a.call("/community-web/v1/model/create", {
+            "projectId": job["project_id"], "name": req.get("version_name") or "v1", "baseModel": req["base_model"],
+            "trainedWords": req.get("trigger_words") or [], "description": req.get("description") or "",
+            "meta": {"hideChat": True, **(meta or {})}, "flags": {"freeDownload": False, "grantDownload": False, "freeRun": True, "grantRun": False},
+            "modelFiles": [{"name": req["file_name"], "floatingPoint": "FP16", "fileType": "SAFE_TENSOR", "modelSize": "FULL",
+                            "ossBucket": f["bucket"], "ossEndpoint": f["endpoint"], "ossPath": f["object_key"]}],
+            "imageIds": {"value": []}, "imageUrls": [req["cover_url"]], "coverShowcaseIds": {}, "subscribePlanId": "0"})
+        job["model_id"] = str(data["modelId"])
+        save(job)
+    deadline = time.time() + 3600
+    while True:
+        model = ((await a.call("/community-web/v1/model/detail", query={"modelId": job["model_id"]})) or {}).get("model") or {}
+        status = model.get("syncStatus")
+        if status == "FINISHED" and model.get("canRun"):
+            job["access_key"] = model.get("accessKey") or None
+            job["cover_url"] = next((c.get("url") for c in model.get("cover") or [] if c.get("url")), None)
+            return
+        if status and "FAIL" in status:
+            raise UpstreamError(f"the model failed to process upstream ({status})", 502)
+        if time.time() > deadline:
+            raise UpstreamError("the model did not become runnable within an hour", 504)
+        await asyncio.sleep(poll_seconds)
