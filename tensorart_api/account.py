@@ -60,7 +60,7 @@ class Account:
 
     @classmethod
     def from_env(cls, upstream: Upstream, state_dir: Path) -> "Account | None":
-        account = cls(upstream, state_dir, os.environ.get("TENSORART_SESSION") or None)
+        account = cls(upstream, state_dir, os.environ.get("TENSORART_SESSION", "").strip() or None)
         return account if account.token else None
 
     def info(self) -> dict:

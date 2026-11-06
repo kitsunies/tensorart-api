@@ -153,7 +153,7 @@ async def check(body: CheckRequest, up: Annotated[Upstream, Depends(upstream)]):
 
 def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
     """Account endpoints act as you: when API_TOKEN is set they need `Authorization: Bearer <API_TOKEN>`."""
-    token = os.environ.get("API_TOKEN")
+    token = os.environ.get("API_TOKEN", "").strip()
     if token and not hmac.compare_digest(authorization or "", f"Bearer {token}"):
         raise UpstreamError("missing or wrong bearer token", 401)
 
