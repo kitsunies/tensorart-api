@@ -88,3 +88,46 @@ class Facets(BaseModel):
     categories: list[str]
     sorts: list[str]
     generation: list[str]
+
+
+class AccountInfo(BaseModel):
+    user_id: str
+    token_expires_at: str | None = Field(None, description="When the current session token lapses; renewal pushes it out")
+    renewed_at: str | None = None
+
+
+class UploadRequest(BaseModel):
+    """Copy a model file from `url` into your account as a private model."""
+
+    url: str = Field(description="Direct file URL that supports HTTP range requests (presigned links are fine)")
+    name: str = Field(min_length=1, max_length=120, description="Model page name")
+    type: Literal["lora", "locon", "lycoris", "dora", "checkpoint"]
+    base_model: str = Field(description="Base model label as the catalogue spells it, e.g. Illustrious, NoobAI, SDXL 1.0")
+    cover_url: str = Field(description="Showcase image URL; required by the catalogue and copied by it")
+    version_name: str = "v1"
+    trigger_words: list[str] = []
+    description: str = ""
+    source_url: str = Field("", description="Where the model comes from; stored as the reprint's original link")
+    file_name: str | None = Field(None, description="Defaults to the name the source reports")
+    channel: str = Field("anime", description="Channel by name: anime, character, illustration, realistic, ...")
+    external_id: str | None = Field(None, max_length=200, description="Idempotency key: the same value returns the same upload")
+
+
+class Upload(BaseModel):
+    id: str
+    external_id: str | None = None
+    state: Literal["queued", "copying", "publishing", "ready", "failed"]
+    bytes_done: int = 0
+    bytes_total: int = 0
+    progress: float = 0.0
+    project_id: str | None = None
+    model_id: str | None = Field(None, description="Model (version) id for generation APIs")
+    access_key: str | None = Field(None, description="The private model's access key for generation APIs")
+    cover_url: str | None = None
+    error: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class UploadList(BaseModel):
+    items: list[Upload]

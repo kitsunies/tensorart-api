@@ -143,6 +143,51 @@ curl -X POST localhost:8000/v1/models/check \
 Pin `source` to the catalogue your models are tuned for. The two catalogues hold different
 models, so `all` gives the widest sweep and a single source gives the most consistent results.
 
+## Your account: private uploads
+
+Optional. Give the server your website session and it can also act as your account:
+
+- **A session that renews itself.** `TENSORART_SESSION` is the site's login token (the
+  `ta_token_prod` cookie). It lasts 30 days; the server swaps it for a fresh one every day and
+  keeps the newest in `STATE_DIR`, so it never lapses while the server keeps running. Changing
+  your password, logging out everywhere or removing the device ends it.
+- **Private uploads from a URL.** `POST /v1/uploads` copies a model file from any URL that
+  supports range requests into your account as a private model, marked as a reprint of
+  `source_url`. It answers at once and copies in the background; poll `GET /v1/uploads/{id}`.
+  The finished upload carries the `model_id` and `access_key` that generation APIs take.
+- **Resumable and idempotent.** Files go up in 10 MB parts, straight from the source to the
+  model bucket with nothing on disk. A restart resumes from the last finished part, and the
+  same `external_id` never uploads twice (a failed upload restarts when you post it again).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/v1/account` | Whose session this is and when it lapses |
+| POST | `/v1/uploads` | Start copying a file into your account (202) |
+| GET | `/v1/uploads/{id}` | State (`queued`, `copying`, `publishing`, `ready`, `failed`), progress and result |
+| GET | `/v1/uploads?external_id=` | Look an upload up by your own id |
+
+When `API_TOKEN` is set, these endpoints need `Authorization: Bearer <API_TOKEN>`. Set it
+whenever the server is reachable by anyone but you: they act as your account.
+
+```bash
+curl -X POST localhost:8000/v1/uploads \
+  -H "authorization: Bearer $API_TOKEN" -H 'content-type: application/json' \
+  -d '{"url": "https://example.com/files/watercolor.safetensors", "name": "Watercolor",
+       "type": "lora", "base_model": "SDXL 1.0", "cover_url": "https://example.com/files/watercolor.jpg",
+       "trigger_words": ["watercolor style"], "source_url": "https://example.com/watercolor",
+       "external_id": "watercolor-v1"}'
+```
+
+```json
+{"id": "ed9dc79fb0254c8e", "external_id": "watercolor-v1", "state": "ready", "progress": 1.0,
+ "bytes_done": 11860808, "bytes_total": 11860808, "project_id": "1063819074351423505",
+ "model_id": "1063819077572640710", "access_key": "...", "cover_url": "https://image.tensorartassets.com/...",
+ "error": null, "created_at": "...", "updated_at": "..."}
+```
+
+`cover_url` is required: the catalogue needs a showcase image and copies it. `type` is `lora`
+(also `locon`, `lycoris`, `dora`) or `checkpoint`; `base_model` uses the catalogue's own labels.
+
 ## Configuration
 
 Copy `.env.example` to `.env` (git-ignored); the CLI and server read it from the working directory.
@@ -157,6 +202,12 @@ Real environment variables take precedence.
 | `TENSORART_SIGN_KEY` | required | Request-signing key (tensor.art, and tensorhub.art unless overridden) |
 | `TENSORHUB_SIGN_KEY` | `TENSORART_SIGN_KEY` | Separate request-signing key for tensorhub.art |
 | `HOST` / `PORT` | `0.0.0.0` / `8000` | `tensorart serve` bind address |
+| `TENSORART_SESSION` | | Your site login token; enables the account endpoints |
+| `STATE_DIR` | `./state` | Where the renewed session and upload progress live (keep it on a volume) |
+| `API_TOKEN` | | Bearer token required by the account endpoints |
+| `ACCOUNT_SOURCE` | `tensorhub` | Which site the account calls go to |
+| `SESSION_RENEW_HOURS` | `24` | How often the session is renewed |
+| `UPLOAD_CONCURRENCY` / `UPLOAD_PART_CONCURRENCY` | `2` / `4` | Uploads at once / parts in flight per upload |
 
 ## How it works
 

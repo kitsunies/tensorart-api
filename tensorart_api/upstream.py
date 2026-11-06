@@ -142,7 +142,10 @@ class Upstream:
         self.cache[key] = (time.monotonic() + self.ttl, data)
         return data
 
-    async def _fetch(self, source: Source, path: str, body: dict | None, query: dict | None) -> Any:
+    async def _fetch(
+        self, source: Source, path: str, body: dict | None, query: dict | None, headers: dict | None = None
+    ) -> Any:
+        """One uncached signed call. `headers` are merged over the signed ones (used for account calls)."""
         url = source.api + path
         for attempt in range(3):
             try:
@@ -152,7 +155,7 @@ class Upstream:
                         url,
                         params=query,
                         content=json.dumps(body) if body is not None else None,
-                        headers=self._headers(source, path, query),
+                        headers={**self._headers(source, path, query), **(headers or {})},
                     )
             except httpx.TransportError as e:
                 if attempt == 2:
