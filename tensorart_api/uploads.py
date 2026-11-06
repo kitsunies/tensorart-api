@@ -28,6 +28,7 @@ log = logging.getLogger("tensorart_api.uploads")
 
 MIN_PART, MAX_PART, MAX_PARTS = 10 * 1024 * 1024, 100 * 1024 * 1024, 1000  # upstream limits
 URL_LIFETIME = 23 * 3600  # part URLs last 24 h; restart the multipart before they lapse
+PIECE = 1024 * 1024
 TYPES = {"lora": "LORA", "locon": "LORA", "lycoris": "LORA", "dora": "LORA", "checkpoint": "CHECKPOINT"}
 DONE = ("ready", "failed")
 
@@ -52,7 +53,7 @@ class Uploads:
         self.dir = Path(state_dir) / "uploads"
         self.dir.mkdir(parents=True, exist_ok=True)
         # Source files and part PUTs go direct, never through a proxy meant for API calls.
-        self.http = http or httpx.AsyncClient(timeout=httpx.Timeout(60, read=300), follow_redirects=True, trust_env=False)
+        self.http = http or httpx.AsyncClient(timeout=httpx.Timeout(120, read=300), follow_redirects=True, trust_env=False)
         self.min_part = min_part
         self.poll_seconds = poll_seconds
         self.jobs: dict[str, dict] = {}
@@ -126,7 +127,7 @@ class Uploads:
             except Exception as e:
                 while isinstance(e, ExceptionGroup):
                     e = e.exceptions[0]
-                log.warning("upload %s failed: %s", job["id"], e)
+                log.warning("upload %s failed: %r", job["id"], e)
                 job.update(state="failed", error=getattr(e, "message", None) or str(e) or type(e).__name__)
             self.save(job)
 
@@ -173,21 +174,32 @@ class Uploads:
             start, end = (n - 1) * size, min(n * size, total) - 1
             async with gate:
                 for attempt in range(3):
+                    sent = 0
                     try:
                         src = await self.http.get(req["url"], headers={"range": f"bytes={start}-{end}"})
                         if src.status_code in (401, 403, 404, 410):
                             raise UpstreamError(f"source link failed (HTTP {src.status_code}); request the copy again with a fresh url", 502)
                         src.raise_for_status()
                         chunk = src.content
-                        put = await self.http.put(urls[n - 1], content=chunk, headers={"content-type": "application/octet-stream"})
+
+                        async def pieces():  # 1 MB writes: the write timeout and progress apply per piece
+                            nonlocal sent
+                            for i in range(0, len(chunk), PIECE):
+                                yield chunk[i:i + PIECE]
+                                piece = min(PIECE, len(chunk) - i)
+                                sent += piece
+                                job["bytes_done"] += piece
+
+                        put = await self.http.put(urls[n - 1], content=pieces(), headers={
+                            "content-type": "application/octet-stream", "content-length": str(len(chunk))})
                         put.raise_for_status()
                         break
                     except (httpx.TransportError, httpx.HTTPStatusError):
+                        job["bytes_done"] -= sent
                         if attempt == 2:
                             raise
                         await asyncio.sleep(2 * 3**attempt)
             job["parts"][str(n)] = put.headers["etag"]
-            job["bytes_done"] += len(chunk)
             self.save(job)
 
         async with asyncio.TaskGroup() as tg:  # one failed part cancels the rest
