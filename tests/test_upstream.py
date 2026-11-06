@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 
 import httpx
@@ -7,15 +10,24 @@ import pytest
 from tensorart_api.upstream import SOURCES, Upstream, UpstreamError, sign
 
 
-def test_sign_matches_a_browser_request():
-    # Captured from the live website: path, x-request-timestamp, x-request-sign.
-    assert sign("/community-web/v1/project/portal/list/v3", None, "1793939724949") == (
-        "ZDliYmVhODBkNTI5NmE2YTNlN2RkNjVlYjQwZmM3ZjI4ODcwYThmYmMzOWQ4YzdlMTYzZTcyN2Y5YTE2N2M4NQ=="
-    )
+def test_sign_format():
+    digest = hmac.new(b"test-key", b"/community-web/v1/x1793939724949", hashlib.sha256).hexdigest()
+    assert sign("/community-web/v1/x", None, "1793939724949", "test-key") == base64.b64encode(digest.encode()).decode()
+
+
+def test_sign_key_per_source(monkeypatch):
+    assert SOURCES["tensorhub"].sign_key == "test-key"  # falls back to TENSORART_SIGN_KEY
+    monkeypatch.setenv("TENSORHUB_SIGN_KEY", "hub-key")
+    assert SOURCES["tensorhub"].sign_key == "hub-key"
+    assert SOURCES["tensorart"].sign_key == "test-key"
+    monkeypatch.delenv("TENSORART_SIGN_KEY")
+    with pytest.raises(UpstreamError) as e:
+        SOURCES["tensorart"].sign_key
+    assert e.value.status == 500
 
 
 def test_sign_includes_sorted_query():
-    assert sign("/p", {"b": 2, "a": 1}, "1") == sign("/pa=1&b=2", None, "1")
+    assert sign("/p", {"b": 2, "a": 1}, "1", "k") == sign("/pa=1&b=2", None, "1", "k")
 
 
 def run(coro):
@@ -43,7 +55,7 @@ def test_call_signs_caches_and_unwraps():
     req = seen[0]
     assert req.url.host == "api.tensorhub.art"
     assert req.headers["x-request-package-id"] == "3023"
-    assert req.headers["x-request-sign"] == sign("/x", None, req.headers["x-request-timestamp"])
+    assert req.headers["x-request-sign"] == sign("/x", None, req.headers["x-request-timestamp"], "test-key")
     assert json.loads(req.content) == {"q": 1}
 
 

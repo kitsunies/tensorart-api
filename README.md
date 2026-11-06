@@ -4,7 +4,7 @@ A live, cached JSON API and CLI over the [Tensor.Art](https://tensor.art) model 
 It searches LoRAs and checkpoints, sorts them into characters, styles and base-model families,
 and tells you whether each model can actually be used for online generation.
 
-- **No account or API key.** It signs requests the same way the website does.
+- **No account needed.** It signs requests the same way the website does, using a key you supply.
 - **Two catalogues, one switch.** `tensor.art` and `tensorhub.art` serve different catalogues with
   little overlap. Query one (`source=tensorart` / `source=tensorhub`) or both (`source=all`).
 - **Generation switch.** `generation=allowed` (the default) hides models that are owner-only,
@@ -16,6 +16,7 @@ and tells you whether each model can actually be used for online generation.
 
 ```bash
 pip install git+https://github.com/kitsunies/tensorart-api
+cp .env.example .env       # then fill in TENSORART_SIGN_KEY
 tensorart characters "rebecca" --family illustrious
 tensorart serve            # HTTP API on :8000, docs at /docs
 ```
@@ -23,7 +24,7 @@ tensorart serve            # HTTP API on :8000, docs at /docs
 Or with Docker:
 
 ```bash
-docker run -p 8000:8000 ghcr.io/kitsunies/tensorart-api
+docker run -p 8000:8000 --env-file .env ghcr.io/kitsunies/tensorart-api
 ```
 
 ## CLI
@@ -144,23 +145,26 @@ models, so `all` gives the widest sweep and a single source gives the most consi
 
 ## Configuration
 
+Copy `.env.example` to `.env` (git-ignored); the CLI and server read it from the working directory.
+Real environment variables take precedence.
+
 | Env var | Default | Purpose |
 |---|---|---|
 | `DEFAULT_SOURCE` | `all` | Catalogue used when a request omits `source` |
 | `CACHE_TTL` | `300` | Seconds to cache upstream responses |
 | `UPSTREAM_CONCURRENCY` | `8` | Max concurrent upstream requests |
 | `MAX_UPSTREAM_PAGES` | `5` | Upstream pages scanned per source per request, which bounds sparse filters |
-| `TENSORART_SIGN_KEY` | built in | Request-signing key, if the website rotates it |
+| `TENSORART_SIGN_KEY` | required | Request-signing key (tensor.art, and tensorhub.art unless overridden) |
+| `TENSORHUB_SIGN_KEY` | `TENSORART_SIGN_KEY` | Separate request-signing key for tensorhub.art |
 | `HOST` / `PORT` | `0.0.0.0` / `8000` | `tensorart serve` bind address |
 
 ## How it works
 
 The website's frontend calls a JSON API and signs every request with
-`base64(hex(HMAC-SHA256(key, path + sorted query + timestamp)))`, using a key shipped in its public
-JavaScript bundle. This project sends the same signed requests from plain HTTP, normalises the
-responses and caches them in memory. If every request starts failing with
-`upstream rejected the request signature`, the key has rotated: find `production:"..."` in the
-site's main `_nuxt/*.js` bundle and set `TENSORART_SIGN_KEY`.
+`base64(hex(HMAC-SHA256(key, path + sorted query + timestamp)))`. This project sends the same
+signed requests from plain HTTP with the key you configure, normalises the responses and caches
+them in memory. If requests fail with `rejected the request signature`, the configured key is no
+longer accepted: update `TENSORART_SIGN_KEY` / `TENSORHUB_SIGN_KEY`.
 
 Categories come from the catalogue's own tags, so untagged models only match category filters
 once their authors tag them. Search by name to find those.

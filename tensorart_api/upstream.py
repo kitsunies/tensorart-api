@@ -21,7 +21,21 @@ from urllib.parse import quote
 
 import httpx
 
-SIGN_KEY = os.environ.get("TENSORART_SIGN_KEY", "2TJhRTpCpUIgnWl3qwIaoMMt3KhL2nkC")
+
+
+def load_dotenv(path: str = ".env") -> None:
+    """Read KEY=value lines from ./.env into the environment without overriding what is already set."""
+    try:
+        with open(path) as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep and key and not key.startswith("#"):
+                    os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+    except FileNotFoundError:
+        pass
+
+
+load_dotenv()
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -35,6 +49,15 @@ class Source:
     host: str
     package_id: str
     list_visibility: str
+    key_env: str
+
+    @property
+    def sign_key(self) -> str:
+        """Per-catalogue key, falling back to TENSORART_SIGN_KEY."""
+        key = os.environ.get(self.key_env) or os.environ.get("TENSORART_SIGN_KEY")
+        if not key:
+            raise UpstreamError(f"{self.key_env} is not set (see .env.example)", 500)
+        return key
 
     @property
     def api(self) -> str:
@@ -46,8 +69,8 @@ class Source:
 
 
 SOURCES: dict[str, Source] = {
-    "tensorart": Source("tensorart", "tensor.art", "3000", "NORMAL"),
-    "tensorhub": Source("tensorhub", "tensorhub.art", "3023", "FLAW"),
+    "tensorart": Source("tensorart", "tensor.art", "3000", "NORMAL", "TENSORART_SIGN_KEY"),
+    "tensorhub": Source("tensorhub", "tensorhub.art", "3023", "FLAW", "TENSORHUB_SIGN_KEY"),
 }
 
 
@@ -62,7 +85,7 @@ def canonical_query(query: dict[str, Any] | None) -> str:
     return "&".join(f"{quote(str(k))}={quote(str(v))}" for k, v in sorted((query or {}).items()))
 
 
-def sign(path: str, query: dict[str, Any] | None, timestamp: str, key: str = SIGN_KEY) -> str:
+def sign(path: str, query: dict[str, Any] | None, timestamp: str, key: str) -> str:
     """base64(hex(HMAC-SHA256(key, path + sorted query + timestamp))). The body is not signed."""
     digest = hmac.new(key.encode(), (path + canonical_query(query) + timestamp).encode(), hashlib.sha256)
     return base64.b64encode(digest.hexdigest().encode()).decode()
@@ -96,7 +119,7 @@ class Upstream:
             "x-request-lang": "en-US",
             "x-request-package-id": source.package_id,
             "x-request-package-sign-version": "0.0.1",
-            "x-request-sign": sign(path, query, ts),
+            "x-request-sign": sign(path, query, ts, source.sign_key),
             "x-request-sign-type": "HMAC_SHA256",
             "x-request-sign-version": "v1",
             "x-request-timestamp": ts,
@@ -136,7 +159,7 @@ class Upstream:
                     raise UpstreamError(f"upstream unreachable: {e}", 504) from e
             else:
                 if r.status_code == 405:
-                    raise UpstreamError("upstream rejected the request signature (set TENSORART_SIGN_KEY)", 502)
+                    raise UpstreamError(f"{source.host} rejected the request signature (check {source.key_env})", 502)
                 if r.status_code < 500 and r.status_code != 429:
                     break
                 if attempt == 2:
