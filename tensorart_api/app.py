@@ -43,11 +43,6 @@ def upstream(request: Request) -> Upstream:
     return request.app.state.upstream
 
 
-def split(values: list[str]) -> list[str]:
-    """Accept both `?type=lora&type=dora` and `?type=lora,dora`."""
-    return [v.strip().lower() for raw in values for v in raw.split(",") if v.strip()]
-
-
 Source = Annotated[service.SourceOpt | None, Query(description="Catalogue to query; defaults to the server's DEFAULT_SOURCE (all).")]
 Category = Literal["character", "style", "concept", "clothing", "background", "tool", "base_model"]
 
@@ -75,7 +70,7 @@ def filters(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     cursor: Annotated[str | None, Query(description="`next_cursor` from the previous page")] = None,
 ) -> Filters:
-    return Filters(q=q, source=source, type=split(type), family=split(family), category=category,
+    return Filters(q=q, source=source, type=service.split_csv(type), family=service.split_csv(family), category=category,
                    generation=generation, sort=sort, limit=limit, cursor=cursor)
 
 

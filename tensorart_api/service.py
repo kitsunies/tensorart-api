@@ -33,6 +33,11 @@ MAX_PAGES = int(os.environ.get("MAX_UPSTREAM_PAGES", 5))  # per source per reque
 SELF_ONLY = "self model"
 
 
+def split_csv(values: list[str]) -> list[str]:
+    """Accept both repeated values and comma-separated ones: ["lora,dora", "vae"] -> ["lora", "dora", "vae"]."""
+    return [v.strip().lower() for raw in values for v in raw.split(",") if v.strip()]
+
+
 def sources_for(source: str | None) -> list[Source]:
     source = source or DEFAULT_SOURCE
     if source == "all":

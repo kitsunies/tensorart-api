@@ -16,7 +16,7 @@ dependencies = [
 dev = ["pytest>=8"]
 
 [project.scripts]
-tensorart-api = "tensorart_api.app:main"
+tensorart = "tensorart_api.cli:main"
 
 [build-system]
 requires = ["setuptools>=69"]
