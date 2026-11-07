@@ -176,23 +176,23 @@ class Uploads:
                 for attempt in range(3):
                     sent = 0
                     try:
-                        src = await self.http.get(req["url"], headers={"range": f"bytes={start}-{end}"})
-                        if src.status_code in (401, 403, 404, 410):
-                            raise UpstreamError(f"source link failed (HTTP {src.status_code}); request the copy again with a fresh url", 502)
-                        src.raise_for_status()
-                        chunk = src.content
+                        # Stream each part through: holding whole parts in memory got the pod
+                        # OOM-killed with two large copies in flight.
+                        async with self.http.stream("GET", req["url"], headers={"range": f"bytes={start}-{end}"}) as src:
+                            if src.status_code in (401, 403, 404, 410):
+                                raise UpstreamError(f"source link failed (HTTP {src.status_code}); request the copy again with a fresh url", 502)
+                            src.raise_for_status()
 
-                        async def pieces():  # 1 MB writes: the write timeout and progress apply per piece
-                            nonlocal sent
-                            for i in range(0, len(chunk), PIECE):
-                                yield chunk[i:i + PIECE]
-                                piece = min(PIECE, len(chunk) - i)
-                                sent += piece
-                                job["bytes_done"] += piece
+                            async def pieces():  # 1 MB writes: the write timeout and progress apply per piece
+                                nonlocal sent
+                                async for piece in src.aiter_bytes(PIECE):
+                                    yield piece
+                                    sent += len(piece)
+                                    job["bytes_done"] += len(piece)
 
-                        put = await self.http.put(urls[n - 1], content=pieces(), headers={
-                            "content-type": "application/octet-stream", "content-length": str(len(chunk))})
-                        put.raise_for_status()
+                            put = await self.http.put(urls[n - 1], content=pieces(), headers={
+                                "content-type": "application/octet-stream", "content-length": str(end - start + 1)})
+                            put.raise_for_status()
                         break
                     except (httpx.TransportError, httpx.HTTPStatusError):
                         job["bytes_done"] -= sent
