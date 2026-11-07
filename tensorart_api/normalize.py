@@ -72,6 +72,11 @@ def _int(v) -> int:
         return 0
 
 
+def _no_commercial_use(model: dict) -> bool:
+    # Generation APIs such as TAMS are commercial use, so they refuse these models.
+    return bool((model.get("modelFlags") or {}).get("noCommercialUse"))
+
+
 def project_generation(project_flags: dict, model: dict) -> Generation:
     flags = project_flags or {}
     if flags.get("onlyAccessibleBySelf"):
@@ -80,6 +85,8 @@ def project_generation(project_flags: dict, model: dict) -> Generation:
         return Generation(allowed=False, reason="online_generation_disabled")
     if model.get("isModelRunSupported") is False:
         return Generation(allowed=False, reason="run_unsupported")
+    if _no_commercial_use(model):
+        return Generation(allowed=False, reason="no_commercial_use")
     return Generation(allowed=True)
 
 
@@ -88,6 +95,8 @@ def model_generation(model: dict) -> Generation:
         return Generation(allowed=False, reason="online_generation_disabled")
     if model.get("isModelRunSupported") is False:
         return Generation(allowed=False, reason="run_unsupported")
+    if _no_commercial_use(model):
+        return Generation(allowed=False, reason="no_commercial_use")
     return Generation(allowed=True)
 
 

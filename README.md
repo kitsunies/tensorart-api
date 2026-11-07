@@ -109,7 +109,8 @@ curl 'localhost:8000/v1/characters?q=rebecca&source=tensorhub&family=anima&limit
 ```
 
 `model_id` is the latest version, which is the id that generation APIs (such as TAMS) expect.
-`generation.reason` is one of `owner_only`, `online_generation_disabled` or `run_unsupported`.
+`generation.reason` is one of `owner_only`, `online_generation_disabled`, `run_unsupported` or `no_commercial_use`
+(the license forbids commercial use, so commercial generation APIs such as TAMS refuse the model).
 
 ### Validating stored models
 

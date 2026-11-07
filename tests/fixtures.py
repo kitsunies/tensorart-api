@@ -2,7 +2,8 @@
 
 
 def list_item(id="1063432615341616924", name="Rebecca - Cyberpunk Edgerunners", base="Anima",
-              tags=("CHARACTER", "ANIME"), allow=True, self_only=False, model_name="v1", type="LORA"):
+              tags=("CHARACTER", "ANIME"), allow=True, self_only=False, model_name="v1", type="LORA",
+              no_commercial=False):
     return {
         "id": id,
         "name": name,
@@ -16,13 +17,14 @@ def list_item(id="1063432615341616924", name="Rebecca - Cyberpunk Edgerunners", 
             "cover": {"url": "https://example.test/cover.png", "contentRating": "EVERYONE"},
             "baseModel": base,
             "isModelRunSupported": True,
+            "modelFlags": {"noCommercialUse": True if no_commercial else None},
         },
         "flags": {"allowOnlineGenerate": allow, "onlyAccessibleBySelf": self_only},
     }
 
 
 def model_detail(id="869608418527192240", name="Illustrious", base="Illustrious", can_run=True,
-                 words=("strapless bra", " black hairband", "")):
+                 words=("strapless bra", " black hairband", ""), no_commercial=False):
     return {
         "id": id,
         "name": name,
@@ -32,6 +34,7 @@ def model_detail(id="869608418527192240", name="Illustrious", base="Illustrious"
         "cover": [{"url": "https://example.test/1.png"}, {"url": "https://example.test/2.png"}],
         "canRun": can_run,
         "isModelRunSupported": True,
+        "modelFlags": {"noCommercialUse": True if no_commercial else None},
     }
 
 

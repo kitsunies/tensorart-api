@@ -11,7 +11,7 @@ class Generation(BaseModel):
     """Whether the model can be used for online generation by anyone, not just its owner."""
 
     allowed: bool
-    reason: Literal["online_generation_disabled", "run_unsupported", "owner_only"] | None = Field(
+    reason: Literal["online_generation_disabled", "run_unsupported", "owner_only", "no_commercial_use"] | None = Field(
         None, description="Why generation is blocked; null when allowed."
     )
 

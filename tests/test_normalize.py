@@ -35,6 +35,7 @@ def test_project_summary_allowed():
 def test_project_summary_blocked_reasons():
     assert project_summary(list_item(allow=False), SOURCES["tensorart"]).generation.reason == "online_generation_disabled"
     assert project_summary(list_item(self_only=True), SOURCES["tensorart"]).generation.reason == "owner_only"
+    assert project_summary(list_item(no_commercial=True), SOURCES["tensorhub"]).generation.reason == "no_commercial_use"
 
 
 def test_model_version():
@@ -43,3 +44,5 @@ def test_model_version():
     assert v.cover_urls == ["https://example.test/1.png", "https://example.test/2.png"]
     assert v.generation.allowed
     assert model_version(model_detail(can_run=False), SOURCES["tensorhub"]).generation.allowed is False
+    blocked = model_version(model_detail(no_commercial=True), SOURCES["tensorhub"]).generation
+    assert (blocked.allowed, blocked.reason) == (False, "no_commercial_use")
